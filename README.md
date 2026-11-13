@@ -42,6 +42,7 @@ In game, `/fishflash` lists the addon's options: `/fishflash marker` shows the s
 
 - **"Haven't seen the marker yet"**: make sure the addon is enabled (character select → AddOns), then type `/fishflash marker`.
 - **Misses bites or flashes on the wrong thing**: run `1 - Calibrate.bat` at your current spot and keep the box to just the water. Then run `Troubleshoot (verbose).bat` and look at the pictures in `watcher\snapshots`: the red box should be on your bobber.
+- **Fog, dusk or murky water** (Dustwallow Marsh, for one) mutes the red top. The watcher tries a looser colour rule when the normal one finds nothing; the log then says "red top (dull light)".
 - **Bobbers without a red top** (some bobber toys) fall back to a less reliable method.
 - Every cast is logged in `watcher\watcher.log`, which is handy if you open an issue.
 

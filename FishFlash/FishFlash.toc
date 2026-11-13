@@ -2,7 +2,7 @@
 ## Title: Fish Flash
 ## Notes: Tells the Fish Flash screen watcher when you're fishing, so it can flash the screen on a bite. /fishflash for options.
 ## Author: Obringerad
-## Version: 1.0.0
+## Version: 1.0.1
 ## IconTexture: Interface\Icons\Trade_Fishing
 ## SavedVariables: FishFlashDB
 

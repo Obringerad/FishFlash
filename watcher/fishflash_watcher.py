@@ -300,19 +300,31 @@ def box_sum(grid, r):
     return out
 
 
-def is_bobber_red(b, g, r):
+def is_bobber_red(b, g, r, loose=False):
     """The bobber's red top, judged by hue rather than brightness so it still counts when it's dark.
 
     Water is bluer than it is red, wood and skin are brown/orange (green close to red), so neither passes.
+    `loose` is the second try, for fog, dusk and murky water (Theramore, for one), where the top is
+    muted to a dull brick colour like (59, 35, 31): red only has to beat green by half.
     """
+    if loose:
+        return r >= 30 and 2 * r >= 3 * g and 10 * r >= 14 * b
     return r >= 30 and r >= 2 * g and 2 * r >= 3 * b
 
 
-def red_count(buf):
+def is_water(b, g, r, loose=False):
+    """Water around the bobber: at least as blue as it is red.
+
+    `loose` also counts green-led colours, for swamp and marsh water; wood, ground and skin are
+    red-led browns either way.
+    """
+    return b >= r or (loose and g >= r)
+
+
+def red_count(buf, loose=False):
     n = 0
     for i in range(0, len(buf) - 3, 4):
-        r = buf[i + 2]
-        if r >= 30 and r >= 2 * buf[i + 1] and 2 * r >= 3 * buf[i]:
+        if is_bobber_red(buf[i], buf[i + 1], buf[i + 2], loose):
             n += 1
     return n
 
@@ -322,16 +334,26 @@ def locate_red_bobber(before, landed, later, w, h, scale=1.0):
 
     Other red things that move during the cast (a player or pet on a dock, someone's clothes, your
     own hands) are bigger, sit on wood or ground rather than water, or keep moving, so they lose.
+    Tries the strict colour rules first and only loosens them if nothing passes, so dull orange
+    things (gear, lanterns) can't beat a properly red bobber.
     `scale` is how many pixels of this image make one pixel at 1/4 size (2 when grabbed at 1/2 size).
-    Returns (x, y) in this image, or None if nothing qualifies.
+    Returns ((x, y) in this image, loose), or None if nothing qualifies.
     """
+    for loose in (False, True):
+        found = _locate_red(before, landed, later, w, h, scale, loose)
+        if found:
+            return found, loose
+    return None
+
+
+def _locate_red(before, landed, later, w, h, scale, loose):
     red = set()
     for y in range(h):
         row = y * w * 4
         for x in range(w):
             i = row + x * 4
             b, g, r = landed[i], landed[i + 1], landed[i + 2]
-            if r >= 30 and r >= 2 * g and 2 * r >= 3 * b:
+            if is_bobber_red(b, g, r, loose):
                 ob, og, orr = before[i], before[i + 1], before[i + 2]
                 if abs(r - orr) + abs(g - og) + abs(b - ob) >= 25:
                     red.add((x, y))
@@ -364,10 +386,11 @@ def locate_red_bobber(before, landed, later, w, h, scale=1.0):
         if len(group) < 2 or x1 - x0 > max_side or y1 - y0 > max_side or len(group) > max_n:
             continue  # a stray pixel, or far bigger than a bobber
         # still red a moment later? (hands, players and pets keep moving; the bobber floats)
-        still = sum(1 for x, y in group if is_bobber_red(*later[(y * w + x) * 4:(y * w + x) * 4 + 3]))
+        still = sum(1 for x, y in group
+                    if is_bobber_red(*later[(y * w + x) * 4:(y * w + x) * 4 + 3], loose))
         if still < 0.4 * len(group):
             continue
-        # how much of the ring around it looks like water (at least as blue as it is red)
+        # how much of the ring around it looks like water
         water = total = 0
         for y in range(max(0, y0 - ring), min(h, y1 + ring + 1)):
             for x in range(max(0, x0 - ring), min(w, x1 + ring + 1)):
@@ -375,7 +398,7 @@ def locate_red_bobber(before, landed, later, w, h, scale=1.0):
                     continue
                 i = (y * w + x) * 4
                 total += 1
-                if landed[i] >= landed[i + 2]:
+                if is_water(landed[i], landed[i + 1], landed[i + 2], loose):
                     water += 1
         frac = water / total if total else 0.0
         if frac < 0.75:  # bobbers measured 0.81-0.96; people and pets on a dock 0.67 at most
@@ -572,8 +595,13 @@ class Watcher:
 
     def lock_on(self, later):
         found = locate_red_bobber(self.before, self.landed, later, self.bw, self.bh)
+        self.loose = False
         how = "red top"
-        if not found:  # a bobber toy without red, or very dark water: fall back to "what appeared"
+        if found:
+            found, self.loose = found
+            if self.loose:
+                how = "red top (dull light)"
+        else:  # a bobber toy without red, or very dark water: fall back to "what appeared"
             found = locate_bobber(self.before, self.landed, later, self.bw, self.bh)
             how = "movement"
         if not found:
@@ -603,7 +631,7 @@ class Watcher:
         cfg = self.cfg
         cur = self.screen.grab(*self.patch)
         e = energy(self.prev, cur)
-        rc = red_count(cur)
+        rc = red_count(cur, self.loose)
         self.prev = cur
         if t < cfg["baseline_until"]:
             self.samples.append(e)
