@@ -1,0 +1,5 @@
+watcher/snapshots/
+watcher/fishflash_watcher.json
+watcher/watcher.log*
+__pycache__/
+*.zip
