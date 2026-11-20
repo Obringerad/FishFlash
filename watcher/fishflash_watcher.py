@@ -312,13 +312,37 @@ def is_bobber_red(b, g, r, loose=False):
     return r >= 30 and r >= 2 * g and 2 * r >= 3 * b
 
 
-def is_water(b, g, r, loose=False):
+def chroma(b, g, r):
+    """Colour without brightness: each channel's share of the total."""
+    t = r + g + b or 1
+    return r / t, g / t, b / t
+
+
+def typical_chroma(buf):
+    """The usual colour of the calibrated box, which is mostly water: per-channel median of a sample."""
+    rs, gs, bs = [], [], []
+    for i in range(0, len(buf) - 3, 4 * 7):
+        r, g, b = chroma(buf[i], buf[i + 1], buf[i + 2])
+        rs.append(r); gs.append(g); bs.append(b)
+    if not rs:
+        return None
+    m = len(rs) // 2
+    return sorted(rs)[m], sorted(gs)[m], sorted(bs)[m]
+
+
+def is_water(b, g, r, loose=False, typical=None):
     """Water around the bobber: at least as blue as it is red.
 
-    `loose` also counts green-led colours, for swamp and marsh water; wood, ground and skin are
-    red-led browns either way.
+    `loose` also counts green-led colours, for swamp and marsh water, and anything close in colour to
+    `typical` (the box's usual colour), for golden or brown water like Dustwallow Marsh at sunset.
+    Wood, ground and skin are red-led browns, far from blue or green water, so they still fail there.
     """
-    return b >= r or (loose and g >= r)
+    if b >= r or (loose and g >= r):
+        return True
+    if typical is None or r + g + b < 30:
+        return False
+    cr, cg, cb = chroma(b, g, r)
+    return abs(cr - typical[0]) + abs(cg - typical[1]) + abs(cb - typical[2]) <= 0.2
 
 
 def red_count(buf, loose=False):
@@ -377,6 +401,7 @@ def _locate_red(before, landed, later, w, h, scale, loose):
                         stack.append(p)
         groups.append(group)
 
+    typical = typical_chroma(landed) if loose else None
     max_side, max_n, ring = 12 * scale, 60 * scale * scale, max(4, round(5 * scale))
     best, best_score = None, 0.0
     for group in groups:
@@ -398,7 +423,7 @@ def _locate_red(before, landed, later, w, h, scale, loose):
                     continue
                 i = (y * w + x) * 4
                 total += 1
-                if is_water(landed[i], landed[i + 1], landed[i + 2], loose):
+                if is_water(landed[i], landed[i + 1], landed[i + 2], loose, typical):
                     water += 1
         frac = water / total if total else 0.0
         if frac < 0.75:  # bobbers measured 0.81-0.96; people and pets on a dock 0.67 at most
